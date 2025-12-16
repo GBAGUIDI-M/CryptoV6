@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="fr" class="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crypto Station V16</title>
+
+    <!-- 1. LIBRAIRIES EXTERNES -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- 2. FIREBASE -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+
+    <!-- 3. CONFIGURATION TAILWIND -->
+    <script>
+        if (typeof tailwind !== 'undefined') {
+            tailwind.config = {
+                darkMode: 'class',
+                theme: { extend: { colors: {} } }
+            };
+        }
+    </script>
+
+    <!-- 4. STYLES LOCAUX -->
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/themes.css">
+
+    <!-- PWA -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#4f46e5">
+    <link rel="apple-touch-icon" href="assets/icon.png">
+
+    <!-- 5. SCRIPTS LOCAUX (Config first) -->
+    <script src="js/config.js"></script>
+    <script src="js/charts.js"></script>
+    <script src="js/dna_engine.js"></script>
+    <script src="js/notifications.js"></script>
+    <script src="js/app.js"></script>
+    <script src="https://s3.tradingview.com/tv.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+</head>
+
+<body
+    class="bg-gray-100 text-gray-800 dark:bg-slate-900 dark:text-gray-200 transition-colors duration-300 overflow-x-hidden font-sans"
+    x-data="cryptoApp()" x-init="init()">
+
+    <!-- --- TOAST CONTAINER (Notifications) --- -->
+    <div class="fixed bottom-4 right-4 z-[100] flex flex-col gap-3 pointer-events-none">
+        <template x-for="toast in toasts" :key="toast.id">
+            <div class="pointer-events-auto min-w-[300px] max-w-sm bg-white dark:bg-slate-800 border-l-4 rounded-lg shadow-2xl p-4 flex items-start gap-3 transform transition-all duration-300 animate-slide-in"
+                :class="{
+                    'border-green-500': toast.type === 'success',
+                    'border-red-500': toast.type === 'error',
+                    'border-blue-500': toast.type === 'info'
+                 }" x-show="toast.visible" x-transition:enter="toast-enter-active"
+                x-transition:enter-start="toast-enter" x-transition:enter-end="toast-leave"
+                x-transition:leave="toast-leave-active" x-transition:leave-start="toast-leave"
+                x-transition:leave-end="toast-enter">
+
+                <!-- Icone -->
+                <div class="mt-0.5">
+                    <i class="fas fa-check-circle text-green-500 text-lg" x-show="toast.type === 'success'"></i>
+                    <i class="fas fa-exclamation-circle text-red-500 text-lg" x-show="toast.type === 'error'"></i>
+                    <i class="fas fa-info-circle text-blue-500 text-lg" x-show="toast.type === 'info'"></i>
+                </div>
+
+                <!-- Contenu -->
+                <div class="flex-1">
+                    <h4 class="font-bold text-sm dark:text-white capitalize"
+                        x-text="toast.type === 'success' ? 'Succès' : (toast.type === 'error' ? 'Erreur' : 'Info')">
+                    </h4>
+                    <p class="text-xs text-gray-600 dark:text-gray-300 mt-1" x-text="toast.message"></p>
+                </div>
+
+                <!-- Close -->
+                <button @click="removeToast(toast.id)"
+                    class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"><i
+                        class="fas fa-times"></i></button>
+            </div>
+        </template>
+    </div>
+
+    <!-- MODAL CONFIRM -->
+    <div x-show="confirmModal.open" x-cloak
+        class="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 fade-in">
+        <div
+            class="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-2xl max-w-sm w-full border border-gray-200 dark:border-slate-700">
+            <h3 class="text-lg font-bold mb-2 dark:text-white" x-text="confirmModal.title"></h3>
+            <p class="text-gray-600 dark:text-slate-300 mb-6 text-sm" x-text="confirmModal.message"></p>
+            <div class="flex justify-end gap-3">
+                <button @click="confirmModal.open = false"
+                    class="px-4 py-2 text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg text-sm font-bold transition"
+                    x-text="t('cancel')"></button>
+                <button @click="confirmModal.onConfirm();"
+                    class="px-4 py-2 bg-indigo-600 text-white hover:bg-indigo-500 rounded-lg text-sm font-bold shadow-lg transition"
+                    x-text="t('confirmAction')"></button>
+            </div>
+        </div>
+    </div>
+
+    <!-- LOCK SCREEN -->
+    <div x-show="locked" class="fixed inset-0 z-50 bg-gray-900 flex flex-col items-center justify-center p-4">
+        <div class="bg-gray-800 p-8 rounded-2xl border border-gray-700 shadow-2xl max-w-sm w-full text-center">
+            <div
+                class="mb-6 w-16 h-16 rounded-full bg-indigo-500/10 flex items-center justify-center mx-auto text-indigo-500">
+                <i class="fas fa-fingerprint text-3xl"></i>
+            </div>
+            <h2 class="text-2xl font-bold mb-6 text-white" x-text="savedPin ? t('enterPin') : t('setPin')"></h2>
+            <input type="password" x-model="pinInput" maxlength="6"
+                class="w-full bg-gray-900 border border-gray-700 rounded-xl p-4 text-center text-3xl tracking-widest text-white focus:border-indigo-500 outline-none mb-6">
+            <button @click="unlockApp()"
+                class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-xl transition"
+                x-text="t('unlock')"></button>
+            <p class="mt-6 text-xs text-gray-500" x-text="t('welcomeShare')"></p>
+        </div>
+    </div>
+
+    <!-- MAIN APP -->
+    <div class="max-w-7xl mx-auto p-4 md:p-6 min-h-screen flex flex-col"
+        :class="locked ? 'blur-md pointer-events-none' : ''">
+
+        <!-- HEADER -->
+        <header
+            class="flex flex-col md:flex-row justify-between items-center bg-white dark:bg-slate-800 p-4 rounded-2xl border border-gray-200 dark:border-slate-700 shadow-lg mb-6 transition-all duration-300">
+            <div class="flex items-center gap-4 mb-4 md:mb-0">
+                <div class="bg-indigo-600 p-3 rounded-lg text-white shadow-lg shadow-indigo-500/30"><i
+                        class="fas fa-rocket text-xl"></i></div>
+                <div>
+                    <h1 class="text-2xl font-bold text-indigo-600 dark:text-white tracking-tight">Crypto Station V16
+                    </h1>
+                    <div class="flex items-center text-xs text-gray-500 dark:text-slate-400">
+                        <span class="w-2 h-2 rounded-full mr-2"
+                            :class="apiError ? 'bg-red-500' : (loading ? 'bg-yellow-400 animate-pulse' : 'bg-green-400')"></span>
+                        <span
+                            x-text="apiError ? t('statusError') : (loading ? 'Mise à jour...' : t('statusOnline'))"></span>
+                    </div>
+                </div>
+            </div>
+            <div class="flex gap-2 items-center">
+                <!-- Theme Selector -->
+                <div class="relative" x-data="{ open: false }">
+                    <button @click="open = !open"
+                        class="p-2 bg-gray-100 dark:bg-slate-700 rounded-lg hover:bg-gray-200 dark:hover:bg-slate-600 transition flex items-center gap-2">
+                        <i class="fas fa-palette text-indigo-500"></i>
+                    </button>
+                    <div x-show="open" @click.outside="open = false"
+                        class="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-gray-200 dark:border-slate-700 p-2 z-20 fade-in grid grid-cols-1 gap-1">
+                        <div class="text-xs font-bold text-gray-400 px-2 py-1">THÈMES</div>
+                        <button @click="setTheme('light'); open=false"
+                            class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-700 text-sm">
+                            <div class="w-4 h-4 rounded-full bg-white border border-gray-300"></div> Clair
+                        </button>
+                        <button @click="setTheme('dark'); open=false"
+                            class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-700 text-sm dark:text-white">
+                            <div class="w-4 h-4 rounded-full bg-slate-900 border border-slate-700"></div> Sombre
+                        </button>
+                        <button @click="setTheme('cyberpunk'); open=false"
+                            class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-700 text-sm text-pink-500 font-bold">
+                            <div class="w-4 h-4 rounded-full bg-black border border-pink-500"></div> Cyberpunk
+                        </button>
+                        <button @click="setTheme('ocean'); open=false"
+                            class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-700 text-sm text-cyan-500 font-bold">
+                            <div class="w-4 h-4 rounded-full bg-[#001e2b] border border-cyan-500"></div> Ocean
+                        </button>
+                        <button @click="setTheme('forest'); open=false"
+                            class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-700 text-sm text-emerald-500 font-bold">
+                            <div class="w-4 h-4 rounded-full bg-[#0f1f15] border border-emerald-500"></div> Forest
+                        </button>
+                    </div>
+                </div>
+
+                <button @click="toggleCurrency()"
+                    class="px-3 py-2 bg-gray-100 dark:bg-slate-700 rounded-lg hover:bg-gray-200 dark:hover:bg-slate-600 transition text-sm font-bold text-indigo-600 dark:text-indigo-400"
+                    x-text="settings.currency"></button>
+                <button @click="showSettings = !showSettings"
+                    class="p-2 bg-gray-100 dark:bg-slate-700 rounded-lg hover:bg-gray-200 dark:hover:bg-slate-600 transition"><i
+                        class="fas fa-cog text-gray-600 dark:text-gray-300"></i></button>
+                <button @click="togglePriv()"
+                    class="p-2 bg-gray-100 dark:bg-slate-700 rounded-lg hover:bg-gray-200 dark:hover:bg-slate-600 transition"><i
+                        class="fas text-gray-600 dark:text-gray-300"
+                        :class="privacy ? 'fa-eye-slash' : 'fa-eye'"></i></button>
+            </div>
+        </header>
+
+        <!-- SETTINGS -->
+        <div x-show="showSettings" x-cloak
+            class="mb-6 bg-white dark:bg-slate-800 p-6 rounded-xl border border-gray-200 dark:border-slate-700 fade-in shadow-xl relative z-10">
+            <h3 class="font-bold mb-4 border-b border-gray-200 dark:border-slate-700 pb-2 dark:text-white"
+                x-text="t('settings')"></h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-xs text-gray-500 dark:text-slate-400 mb-1">Langue</label>
+                        <button @click="toggleLang()"
+                            class="px-4 py-2 bg-gray-100 dark:bg-slate-700 rounded text-sm font-bold uppercase dark:text-white"
+                            x-text="settings.lang"></button>
+                    </div>
+                    <div class="flex gap-2">
+                        <button @click="triggerReset()"
+                            class="px-4 py-2 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900 rounded text-xs font-bold uppercase hover:opacity-80"
+                            x-text="t('resetApp')"></button>
+                        <button @click="isDemo ? disableDemo() : triggerDemo()"
+                            class="px-4 py-2 border rounded text-xs font-bold uppercase hover:opacity-80 transition"
+                            :class="isDemo ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 border-orange-200 dark:border-orange-900' : 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-900'"
+                            x-text="isDemo ? t('disableDemo') : t('demoMode')"></button>
+                    </div>
+                    <div>
+                        <button
+                            @click="notifSystem?.requestPermission().then(g => { if(g) showToast('Notifications activées', 'success'); else showToast('Refusé', 'error'); })"
+                            class="w-full mt-2 px-4 py-2 bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-300 rounded text-xs font-bold uppercase hover:bg-gray-200 dark:hover:bg-slate-600">
+                            <i class="fas fa-bell mr-2"></i> Activer Notifications
+                        </button>
+                    </div>
+                </div>
+                <div
+                    class="bg-gray-50 dark:bg-slate-900/50 p-4 rounded-lg border border-gray-200 dark:border-slate-700/50">
+                    <label class="block text-xs text-indigo-600 dark:text-indigo-400 font-bold mb-3 uppercase"
+                        x-text="t('backupTitle')"></label>
+                    <div class="flex gap-2 mb-2">
+                        <button @click="exportCSV()"
+                            class="flex-1 px-3 py-2 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900 rounded-lg text-xs font-bold flex items-center justify-center gap-2">
+                            <i class="fas fa-file-excel"></i> <span x-text="t('exportCSV')"></span>
+                        </button>
+                    </div>
+                    <div class="flex gap-2">
+                        <button @click="exportJSON()"
+                            class="flex-1 px-3 py-2 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-900 rounded-lg text-xs font-bold flex items-center justify-center gap-2">
+                            <i class="fas fa-save"></i> <span x-text="t('exportJSON')"></span>
+                        </button>
+                        <button @click="triggerImport()"
+                            class="flex-1 px-3 py-2 bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 border border-orange-200 dark:border-orange-900 rounded-lg text-xs font-bold flex items-center justify-center gap-2">
+                            <i class="fas fa-upload"></i> <span x-text="t('importJSON')"></span>
+                        </button>
+                        <input type="file" id="jsonInput" class="hidden" accept=".json" @change="handleImport">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TABS (MENU) -->
+        <div class="flex space-x-6 mb-6 border-b border-gray-200 dark:border-slate-700 pb-2 overflow-x-auto">
+            <button @click="tab = 'dashboard'" class="pb-2 font-medium transition flex items-center"
+                :class="tab==='dashboard' ? 'tab-active text-indigo-600 dark:text-indigo-400' : 'tab-inactive text-gray-500 dark:text-gray-400'">
+                <i class="fas fa-th-large mr-2"></i> <span x-text="t('dashboard')"></span>
+            </button>
+            <button @click="tab = 'journal'" class="pb-2 font-medium transition flex items-center"
+                :class="tab==='journal' ? 'tab-active text-indigo-600 dark:text-indigo-400' : 'tab-inactive text-gray-500 dark:text-gray-400'">
+                <i class="fas fa-list-alt mr-2"></i> <span>Journal</span>
+            </button>
+            <button @click="tab = 'analytics'; setTimeout(updateCharts, 100)"
+                class="pb-2 font-medium transition flex items-center"
+                :class="tab==='analytics' ? 'tab-active text-indigo-600 dark:text-indigo-400' : 'tab-inactive text-gray-500 dark:text-gray-400'">
+                <i class="fas fa-chart-line mr-2"></i> <span x-text="t('analytics')"></span>
+            </button>
+            <button @click="tab = 'cloud'" class="pb-2 font-medium transition flex items-center"
+                :class="tab==='cloud' ? 'tab-active text-indigo-600 dark:text-indigo-400' : 'tab-inactive text-gray-500 dark:text-gray-400'">
+                <i class="fas fa-cloud mr-2"></i> <span x-text="t('cloud')"></span>
+            </button>
+        </div>
+
+        <!-- TAB: DASHBOARD -->
+        <div x-show="tab === 'dashboard'" x-cloak class="fade-in">
+            <!-- Goal -->
+            <div
+                class="bg-white dark:bg-slate-800 p-4 rounded-xl border border-gray-200 dark:border-slate-700 shadow-md mb-6 transition-all">
+                <div class="flex justify-between items-end mb-2">
+                    <span class="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase"
+                        x-text="t('goalTitle')"></span>
+                    <div class="text-sm cursor-pointer hover:text-indigo-500 dark:text-slate-300 dark:hover:text-indigo-400 transition"
+                        @click="editGoal()">
+                        <span x-text="formatMoney(totalVal)"></span> / <span x-text="formatMoney(settings.goal)"></span>
+                        <i class="fas fa-pen ml-1 text-xs opacity-50"></i>
+                    </div>
+                </div>
+                <div class="w-full bg-gray-200 dark:bg-slate-700 rounded-full h-2.5 overflow-hidden">
+                    <div class="bg-indigo-600 h-2.5 rounded-full progress-bar shadow-[0_0_10px_rgba(99,102,241,0.5)]"
+                        :style="'width: ' + progressPercent + '%'"></div>
+                </div>
+                <div class="text-right text-xs text-indigo-600 dark:text-indigo-400 mt-1 font-bold"
+                    x-text="progressPercent.toFixed(1) + '%'"></div>
+            </div>
+
+            <!-- KPIs -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <div
+                    class="bg-white dark:bg-slate-800 p-5 rounded-xl border border-gray-200 dark:border-slate-700 shadow-md">
+                    <div class="text-gray-500 dark:text-slate-400 text-xs font-bold uppercase" x-text="t('netWorth')">
+                    </div>
+                    <div class="text-3xl font-bold text-gray-800 dark:text-white mt-1" x-text="formatMoney(totalVal)">
+                    </div>
+                </div>
+                <div
+                    class="bg-white dark:bg-slate-800 p-5 rounded-xl border border-gray-200 dark:border-slate-700 shadow-md">
+                    <div class="text-gray-500 dark:text-slate-400 text-xs font-bold uppercase" x-text="t('pnl')"></div>
+                    <div class="text-xl font-bold mt-1"
+                        :class="totalPnL >= 0 ? 'text-emerald-500 dark:text-emerald-400' : 'text-rose-500 dark:text-rose-400'"
+                        x-text="(totalPnL>=0?'+':'') + formatMoney(totalPnL)"></div>
+                </div>
+                <!-- Mini Add Form -->
+                <div x-show="!viewOnly"
+                    class="md:col-span-2 bg-white dark:bg-slate-800 p-4 rounded-xl border border-gray-200 dark:border-slate-700 flex gap-2 items-end shadow-md">
+                    <div class="flex-1">
+                        <label class="text-xs text-gray-500 dark:text-slate-400">Crypto</label>
+                        <select x-model="form.symbol"
+                            class="w-full bg-gray-50 dark:bg-slate-900 border border-gray-300 dark:border-slate-600 rounded p-1.5 text-sm dark:text-white outline-none focus:border-indigo-500"><template
+                                x-for="a in assets">
+                                <option :value="a.symbol" x-text="a.name"></option>
+                            </template></select>
+                    </div>
+                    <div class="flex-1">
+                        <label class="text-xs text-gray-500 dark:text-slate-400">Montant ($)</label>
+                        <input type="text" x-model="form.amount"
+                            class="w-full bg-gray-50 dark:bg-slate-900 border border-gray-300 dark:border-slate-600 rounded p-1.5 text-sm dark:text-white outline-none focus:border-indigo-500"
+                            placeholder="ex: 50.5">
+                    </div>
+                    <div class="flex-1">
+                        <label class="text-xs text-gray-500 dark:text-slate-400">Qté</label>
+                        <input type="text" x-model="form.qty"
+                            class="w-full bg-gray-50 dark:bg-slate-900 border border-gray-300 dark:border-slate-600 rounded p-1.5 text-sm dark:text-white outline-none focus:border-indigo-500"
+                            placeholder="ex: 0.05">
+                    </div>
+                    <button @click="addTx()"
+                        class="bg-indigo-600 hover:bg-indigo-500 text-white p-1.5 rounded w-10 h-8 flex items-center justify-center shadow-lg transition"><i
+                            class="fas fa-plus"></i></button>
+                    <!-- Button DCA Tool -->
+                    <button @click="showDCA = !showDCA"
+                        class="bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-300 p-1.5 rounded w-10 h-8 flex items-center justify-center transition"
+                        title="Simulateur DCA"><i class="fas fa-calculator"></i></button>
+                </div>
+            </div>
+
+            <!-- DCA TOOL -->
+            <div x-show="showDCA" x-cloak
+                class="mb-6 bg-indigo-50 dark:bg-indigo-900/20 p-4 rounded-xl border border-indigo-100 dark:border-indigo-900/50 fade-in">
+                <h4 class="font-bold text-indigo-700 dark:text-indigo-400 text-sm mb-3"><i
+                        class="fas fa-calculator mr-2"></i> <span x-text="t('dcaTitle')"></span></h4>
+                <div class="flex flex-col md:flex-row gap-4 items-end">
+                    <div>
+                        <label class="text-xs text-gray-500 dark:text-slate-400">Crypto</label>
+                        <select x-model="dcaForm.symbol"
+                            class="bg-white dark:bg-slate-900 border border-gray-300 dark:border-slate-600 rounded p-1.5 text-sm w-32 dark:text-white"><template
+                                x-for="a in assets">
+                                <option :value="a.symbol" x-text="a.symbol"></option>
+                            </template></select>
+                    </div>
+                    <div>
+                        <label class="text-xs text-gray-500 dark:text-slate-400"
+                            x-text="t('simPrice') + ' ($)'"></label>
+                        <input type="number" x-model="dcaForm.currentPrice"
+                            :placeholder="formatMoney(dcaSimulation.currentPrice)"
+                            class="bg-white dark:bg-slate-900 border border-gray-300 dark:border-slate-600 rounded p-1.5 text-sm w-32 dark:text-white">
+                    </div>
+                    <div>
+                        <label class="text-xs text-gray-500 dark:text-slate-400" x-text="t('newBuy') + ' ($)'"></label>
+                        <input type="number" x-model="dcaForm.newAmount"
+                            class="bg-white dark:bg-slate-900 border border-gray-300 dark:border-slate-600 rounded p-1.5 text-sm w-32 dark:text-white">
+                    </div>
+                    <div
+                        class="flex-1 flex gap-4 text-sm bg-white dark:bg-slate-900 p-2 rounded border border-gray-200 dark:border-slate-700 items-center">
+                        <div :class="{'opacity-50': !dcaSimulation.owned}">
+                            <div class="text-xs text-gray-400" x-text="t('currentAvg')"></div>
+                            <div class="font-bold dark:text-white"
+                                x-text="dcaSimulation.owned ? formatMoney(dcaSimulation.currentAvg) : '-'"></div>
+                        </div>
+                        <div class="text-gray-400"><i class="fas fa-arrow-right"></i></div>
+                        <div>
+                            <div class="text-xs text-indigo-500" x-text="t('newAvg')"></div>
+                            <div class="flex items-center gap-2">
+                                <div class="font-bold text-indigo-600 dark:text-indigo-400"
+                                    x-text="formatMoney(dcaSimulation.newAvg)"></div>
+                                <div class="text-xs px-1.5 py-0.5 rounded bg-gray-200 dark:bg-slate-700"
+                                    :class="dcaSimulation.changePct < 0 ? 'text-green-500' : 'text-red-500'"
+                                    x-show="dcaSimulation.owned && dcaSimulation.changePct !== 0"
+                                    x-text="(dcaSimulation.changePct > 0 ? '+' : '') + dcaSimulation.changePct.toFixed(2) + '%'">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Asset List -->
+            <div
+                class="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 overflow-hidden shadow-lg transition-all">
+                <div
+                    class="p-4 bg-gray-50 dark:bg-slate-750 font-bold border-b border-gray-200 dark:border-slate-700 flex justify-between">
+                    <span class="dark:text-white">Positions</span>
+                    <div class="flex space-x-2">
+                        <button @click="filterWallet='all'" class="text-xs px-2 py-1 rounded transition"
+                            :class="filterWallet==='all'?'bg-indigo-600 text-white':'bg-gray-200 dark:bg-slate-700 text-gray-500 dark:text-slate-400'">All</button>
+                        <button @click="filterWallet='spot'" class="text-xs px-2 py-1 rounded transition"
+                            :class="filterWallet==='spot'?'bg-blue-600 text-white':'bg-gray-200 dark:bg-slate-700 text-gray-500 dark:text-slate-400'">Spot</button>
+                    </div>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-sm">
+                        <thead
+                            class="text-gray-500 dark:text-slate-400 bg-gray-50 dark:bg-slate-800/50 uppercase text-xs">
+                            <tr>
+                                <th class="p-4">Asset</th>
+                                <th class="p-4">Price</th>
+                                <th class="p-4">Value</th>
+                                <th class="p-4">PnL</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100 dark:divide-slate-700">
+                            <template x-for="item in portfolio" :key="item.symbol">
+                                <tr @click="openChart(item.symbol)"
+                                    class="hover:bg-gray-50 dark:hover:bg-slate-700/50 transition cursor-pointer">
+                                    <td class="p-4 flex items-center gap-3">
+                                        <div
+                                            class="w-8 h-8 rounded-full overflow-hidden bg-gray-200 flex items-center justify-center shadow-sm">
+                                            <img :src="item.image"
+                                                @error="$el.style.display='none'; $el.nextElementSibling.style.display='block'"
+                                                class="w-full h-full object-cover">
+                                            <div class="hidden w-full h-full" :style="'background:'+item.color"></div>
+                                        </div>
+                                        <div>
+                                            <div class="font-bold dark:text-white" x-text="item.name"></div>
+                                            <div class="text-xs text-gray-500 dark:text-slate-500"
+                                                x-text="item.totalQty.toFixed(4)"></div>
+                                        </div>
+                                    </td>
+                                    <td class="p-4 text-gray-600 dark:text-slate-300"
+                                        x-text="formatMoney(item.currentPrice)"></td>
+                                    <td class="p-4 font-bold dark:text-white" x-text="formatMoney(item.currentValue)">
+                                    </td>
+                                    <td class="p-4 font-bold"
+                                        :class="item.pnl >= 0 ? 'text-emerald-500 dark:text-emerald-400' : 'text-rose-500 dark:text-rose-400'"
+                                        x-text="(item.pnl>=0?'+':'') + formatMoney(item.pnl)"></td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB: JOURNAL -->
+        <div x-show="tab === 'journal'" x-cloak class="fade-in max-w-4xl mx-auto">
+            <div
+                class="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 overflow-hidden shadow-lg">
+                <div
+                    class="p-6 bg-white dark:bg-slate-800 border-b border-gray-200 dark:border-slate-700 flex justify-between items-center">
+                    <div>
+                        <h2 class="text-xl font-bold dark:text-white">Journal des Transactions</h2>
+                        <p class="text-xs text-gray-500 dark:text-slate-400 mt-1"
+                            x-text="transactions.length + ' entrées'"></p>
+                    </div>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-sm">
+                        <thead class="text-gray-500 dark:text-slate-400 bg-gray-50 dark:bg-slate-750 uppercase text-xs">
+                            <tr>
+                                <th class="p-4">Date</th>
+                                <th class="p-4">Crypto</th>
+                                <th class="p-4">Type</th>
+                                <th class="p-4 text-right">Investi</th>
+                                <th class="p-4 text-right">Reçu</th>
+                                <th class="p-4 text-right">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100 dark:divide-slate-700">
+                            <template x-for="tx in transactions.slice().reverse()" :key="tx.id">
+                                <tr class="hover:bg-gray-50 dark:hover:bg-slate-700/50 transition relative overflow-hidden"
+                                    @touchstart="tStart($event)" @touchend="tEnd($event, tx.id)">
+
+                                    <!-- Normal Content -->
+                                    <td class="p-4 text-gray-500 dark:text-slate-400" x-text="tx.date"></td>
+                                    <td class="p-4 flex items-center gap-3">
+                                        <span class="font-bold dark:text-white" x-text="tx.symbol"></span>
+                                    </td>
+                                    <td class="p-4">
+                                        <span
+                                            class="px-2 py-1 rounded-full text-xs font-bold bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">ACHAT</span>
+                                    </td>
+                                    <td class="p-4 text-right font-bold text-gray-700 dark:text-slate-300"
+                                        x-text="formatMoney(tx.amount)"></td>
+                                    <td class="p-4 text-right text-gray-500 dark:text-slate-400 font-mono"
+                                        x-text="tx.qty + ' ' + tx.symbol"></td>
+                                    <td class="p-4 text-right">
+                                        <button x-show="!viewOnly" @click="delTx(tx.id)"
+                                            class="text-gray-400 hover:text-red-500 transition p-2 bg-transparent border-0 cursor-pointer rounded hover:bg-red-50 dark:hover:bg-red-900/20"
+                                            title="Supprimer">
+                                            <i class="fas fa-trash-alt"></i>
+                                        </button>
+                                    </td>
+
+                                    <!-- Swipe Overlay -->
+                                    <td x-show="swipeId === tx.id"
+                                        class="absolute inset-0 bg-red-600 flex items-center justify-end px-6 z-10 transition-transform duration-300"
+                                        x-transition:enter="translate-x-full" x-transition:enter-end="translate-x-0"
+                                        colspan="6">
+                                        <button @click="delTx(tx.id); swipeId=null"
+                                            class="text-white font-bold flex items-center gap-2">
+                                            <i class="fas fa-trash-alt"></i> SUPPRIMER
+                                        </button>
+                                        <button @click.stop="swipeId = null" class="ml-4 text-white/70"><i
+                                                class="fas fa-times"></i></button>
+                                    </td>
+                                </tr>
+                            </template>
+                            <tr x-show="transactions.length === 0">
+                                <td colspan="6" class="p-8 text-center text-gray-400 italic">Aucune transaction
+                                    enregistrée. Ajoutez votre premier achat sur le Tableau de bord.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB: ANALYTICS -->
+        <div x-show="tab === 'analytics'" x-cloak class="fade-in space-y-6">
+
+            <!-- Key Indicators Row (V12 Style) -->
+            <div
+                class="bg-white dark:bg-slate-800 p-6 rounded-xl border border-gray-200 dark:border-slate-700 shadow-md">
+                <div class="flex items-center gap-2 mb-4">
+                    <i class="fas fa-chart-line text-indigo-500"></i>
+                    <h3 class="font-bold dark:text-white">Indicateurs de Performance</h3>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <!-- Volatility -->
+                    <div
+                        class="bg-gray-50 dark:bg-slate-900/50 p-4 rounded-lg text-center border border-gray-100 dark:border-slate-700">
+                        <div class="text-xs text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-1">Volatilité
+                            (30j)</div>
+                        <div class="text-2xl font-bold dark:text-white" x-text="indicators.volatility + '%'"></div>
+                    </div>
+                    <!-- Projection -->
+                    <div
+                        class="bg-gray-50 dark:bg-slate-900/50 p-4 rounded-lg text-center border border-gray-100 dark:border-slate-700">
+                        <div class="text-xs text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-1">Projection
+                            (J+1)</div>
+                        <div class="text-2xl font-bold text-blue-600 dark:text-blue-400"
+                            x-text="formatMoney(indicators.projection)"></div>
+                        <div class="text-[10px] text-gray-400">Régression Linéaire</div>
+                    </div>
+                    <!-- Risk -->
+                    <div
+                        class="bg-gray-50 dark:bg-slate-900/50 p-4 rounded-lg text-center border border-gray-100 dark:border-slate-700">
+                        <div class="text-xs text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-1">Risque
+                            Estimé</div>
+                        <div class="text-2xl font-bold" :class="indicators.risk.color" x-text="indicators.risk.label">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Fear & Greed + Sector -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <!-- FnG Widget -->
+                <div
+                    class="bg-white dark:bg-slate-800 p-6 rounded-xl border border-gray-200 dark:border-slate-700 shadow-md flex flex-col items-center justify-center text-center">
+                    <h3 class="font-bold dark:text-white mb-2">Fear & Greed Index</h3>
+                    <div class="text-5xl font-black mb-2 transition-colors duration-500" :class="fng.color"
+                        x-text="fng.value"></div>
+                    <div class="px-3 py-1 rounded-full bg-gray-100 dark:bg-slate-700 text-sm font-bold dark:text-white"
+                        x-text="fng.classification"></div>
+                    <div class="mt-4 text-xs text-gray-400">Source: Alternative.me</div>
+                </div>
+
+                <!-- Sector Chart -->
+                <div
+                    class="md:col-span-2 bg-white dark:bg-slate-800 p-6 rounded-xl border border-gray-200 dark:border-slate-700 shadow-md">
+                    <h3 class="font-bold dark:text-white mb-4">Répartition par Secteur</h3>
+                    <div class="h-48"><canvas id="chartSector"></canvas></div>
+                </div>
+            </div>
+
+            <!-- Charts Row -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div
+                    class="bg-white dark:bg-slate-800 p-6 rounded-xl border border-gray-200 dark:border-slate-700 shadow-md">
+                    <h3 class="font-bold dark:text-white mb-4">Valeur Globale</h3>
+                    <div class="flex space-x-1 text-xs mb-4">
+                        <button @click="chartRange='7d'; updateCharts()" class="px-2 py-1 rounded"
+                            :class="chartRange==='7d' ? 'bg-indigo-600 text-white' : 'bg-gray-200 dark:bg-slate-700 text-gray-600 dark:text-gray-300'">7J</button>
+                        <button @click="chartRange='1m'; updateCharts()" class="px-2 py-1 rounded"
+                            :class="chartRange==='1m' ? 'bg-indigo-600 text-white' : 'bg-gray-200 dark:bg-slate-700 text-gray-600 dark:text-gray-300'">1M</button>
+                        <button @click="chartRange='all'; updateCharts()" class="px-2 py-1 rounded"
+                            :class="chartRange==='all' ? 'bg-indigo-600 text-white' : 'bg-gray-200 dark:bg-slate-700 text-gray-600 dark:text-gray-300'">Tout</button>
+                    </div>
+                    <div class="h-64"><canvas id="chartLine"></canvas></div>
+                </div>
+                <div
+                    class="bg-white dark:bg-slate-800 p-6 rounded-xl border border-gray-200 dark:border-slate-700 shadow-md">
+                    <h3 class="font-bold dark:text-white mb-4">Allocation Actifs</h3>
+                    <div class="h-64"><canvas id="chartPie"></canvas></div>
+                </div>
+            </div>
+
+            <!-- TradingView Widget -->
+            <div class="bg-white dark:bg-slate-800 p-1 rounded-xl border border-gray-200 dark:border-slate-700 shadow-md h-[500px] overflow-hidden"
+                x-init="$watch('selectedCrypto', () => initTradingView()); $watch('tab', (v) => { if(v==='analytics') setTimeout(initTradingView, 200) })">
+                <div id="tradingview_container" class="w-full h-full"></div>
+            </div>
+        </div>
+
+        <!-- TAB: DNA -->
+        <div x-show="tab === 'dna'" x-cloak class="fade-in max-w-4xl mx-auto space-y-6">
+
+            <!-- Hero Profile -->
+            <div
+                class="bg-white dark:bg-slate-800 p-8 rounded-xl border border-gray-200 dark:border-slate-700 shadow-xl text-center relative overflow-hidden">
+                <div
+                    class="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500">
+                </div>
+                <div
+                    class="w-24 h-24 mx-auto bg-gray-100 dark:bg-slate-700 rounded-full flex items-center justify-center text-4xl mb-4 shadow-inner ring-4 ring-white dark:ring-slate-600">
+                    <span x-text="dna?.profile.archetype.split(' ')[0] || '❓'"></span>
+                </div>
+                <h2 class="text-3xl font-black dark:text-white mb-2" x-text="dna?.profile.archetype.substring(2)"></h2>
+                <p class="text-lg text-gray-600 dark:text-slate-300 max-w-2xl mx-auto"
+                    x-text="dna?.profile.description"></p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- Radar Chart -->
+                <div
+                    class="bg-white dark:bg-slate-800 p-6 rounded-xl border border-gray-200 dark:border-slate-700 shadow-md">
+                    <h3 class="font-bold dark:text-white mb-4 flex items-center gap-2"><i
+                            class="fas fa-bullseye text-indigo-500"></i> Empreinte Psychologique</h3>
+                    <div class="h-64 relative">
+                        <canvas id="chartRadar"></canvas>
+                    </div>
+                </div>
+
+                <!-- AI Coach -->
+                <div
+                    class="bg-white dark:bg-slate-800 p-6 rounded-xl border border-gray-200 dark:border-slate-700 shadow-md flex flex-col">
+                    <h3 class="font-bold dark:text-white mb-4 flex items-center gap-2"><i
+                            class="fas fa-robot text-emerald-500"></i> Coach Intelligent</h3>
+                    <div class="flex-1 space-y-4">
+                        <template x-for="msg in dna?.coachMessages" :key="msg.text">
+                            <div class="flex gap-4 p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg items-start">
+                                <div
+                                    class="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-800 flex items-center justify-center text-indigo-600 dark:text-indigo-300 flex-shrink-0">
+                                    <i class="fas" :class="msg.icon"></i>
+                                </div>
+                                <p class="text-sm text-gray-700 dark:text-gray-300 leading-relaxed" x-text="msg.text">
+                                </p>
+                            </div>
+                        </template>
+                        <div x-show="!dna?.coachMessages?.length" class="text-gray-500 text-center text-sm italic py-8">
+                            Analyse en cours... Ajoutez des transactions pour activer le coach.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+
+            <!-- Disclaimer -->
+            <div
+                class="bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-900/30 p-4 rounded-lg flex gap-4 items-start">
+                <i class="fas fa-exclamation-triangle text-yellow-600 dark:text-yellow-500 mt-1"></i>
+                <div>
+                    <h4 class="font-bold text-yellow-800 dark:text-yellow-400 text-sm">Avertissement Important</h4>
+                    <p class="text-xs text-yellow-700 dark:text-yellow-500 mt-1">
+                        Les analyses et scores ci-dessus sont calculés algorithmiquement sur la base de vos transactions
+                        passées.
+                        Ce ne sont <strong>pas des conseils financiers</strong>. Le "Coach IA" est un outil éducatif
+                        pour
+                        aider à la prise de recul.
+                    </p>
+                </div>
+            </div>
+
+            <!-- TIMELINE EVOLUTION -->
+            <div
+                class="bg-white dark:bg-slate-800 p-6 rounded-xl border border-gray-200 dark:border-slate-700 shadow-md">
+                <h3 class="font-bold dark:text-white mb-6 flex items-center gap-2">
+                    <i class="fas fa-history text-indigo-500"></i> Évolution du Profil
+                </h3>
+                <div class="relative pl-4 border-l-2 border-indigo-100 dark:border-indigo-900/50 space-y-8">
+                    <template x-for="snap in dna?.snapshots.slice().reverse().slice(0, 5)" :key="snap.date">
+                        <div class="relative">
+                            <!-- Dot -->
+                            <div
+                                class="absolute -left-[21px] top-1 w-4 h-4 rounded-full bg-indigo-500 border-4 border-white dark:border-slate-800">
+                            </div>
+
+                            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+                                <span
+                                    class="text-xs font-bold text-gray-400 bg-gray-100 dark:bg-slate-700 px-2 py-1 rounded"
+                                    x-text="snap.date"></span>
+                                <span class="font-bold text-indigo-600 dark:text-indigo-400"
+                                    x-text="snap.profile"></span>
+                            </div>
+
+                            <!-- Mini Scores Bar -->
+                            <div
+                                class="grid grid-cols-4 gap-2 text-center text-[10px] text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-slate-700/30 p-2 rounded">
+                                <div>
+                                    <div class="font-bold mb-1">Impuls.</div>
+                                    <div x-text="Math.round(snap.scores.impulsivity)"></div>
+                                </div>
+                                <div>
+                                    <div class="font-bold mb-1">Disc.</div>
+                                    <div x-text="Math.round(snap.scores.discipline)"></div>
+                                </div>
+                                <div>
+                                    <div class="font-bold mb-1">Risque</div>
+                                    <div x-text="Math.round(snap.scores.riskTolerance)"></div>
+                                </div>
+                                <div>
+                                    <div class="font-bold mb-1">Emotion</div>
+                                    <div x-text="Math.round(snap.scores.emotionalExposure)"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                    <div x-show="!dna?.snapshots?.length" class="text-sm text-gray-500 italic pb-2">
+                        L'historique se construira jour après jour...
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB: CLOUD -->
+        <div x-show="tab === 'cloud'" x-cloak class="fade-in max-w-xl mx-auto">
+            <!-- View Only Banner -->
+            <div x-show="viewOnly" class="bg-blue-600 text-white p-4 rounded-xl shadow-lg mb-6 text-center">
+                <i class="fas fa-eye mb-2 text-2xl"></i>
+                <h3 class="font-bold">Mode Lecture Seule</h3>
+                <p class="text-sm opacity-90">Vous visualisez un portfolio partagé. Les modifications ne seront pas
+                    sauvegardées.</p>
+                <a href="index.html"
+                    class="inline-block mt-3 px-4 py-2 bg-white text-blue-600 rounded-lg font-bold text-sm hover:bg-gray-100 transition">Créer
+                    mon Portfolio</a>
+            </div>
+
+            <div
+                class="bg-white dark:bg-slate-800 p-6 rounded-xl border border-gray-200 dark:border-slate-700 shadow-md space-y-6">
+                <div class="text-center mb-6">
+                    <div
+                        class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 mb-4">
+                        <i class="fas fa-cloud text-3xl"></i>
+                    </div>
+                    <h3 class="text-xl font-bold dark:text-white" x-text="t('cloudTitle')"></h3>
+                    <p class="text-sm text-gray-500 dark:text-slate-400" x-text="t('cloudDesc')"></p>
+                </div>
+                <div x-show="!fbApp" class="space-y-4">
+                    <div x-show="!fbApp"
+                        class="bg-indigo-50 dark:bg-indigo-900/10 p-4 rounded-lg border border-indigo-100 dark:border-indigo-900/30 text-center">
+                        <i class="fas fa-database text-indigo-500 text-2xl mb-2"></i>
+                        <h4 class="font-bold dark:text-white mb-2">Configuration par défaut détectée</h4>
+                        <button @click="initFirebase()"
+                            class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 px-6 rounded-lg transition">
+                            Se connecter au Cloud
+                        </button>
+                        <div class="mt-4">
+                            <button @click="showFbConfig = !showFbConfig" class="text-xs text-gray-500 underline">Avancé
+                                : Modifier la configuration</button>
+                        </div>
+                    </div>
+
+                    <div x-show="showFbConfig" class="mt-4 border-t border-gray-200 dark:border-slate-700 pt-4">
+                        <label class="block text-sm font-bold text-gray-700 dark:text-gray-300"
+                            x-text="t('pasteConfig')"></label>
+                        <textarea x-model="fbConfigInput" rows="6"
+                            class="w-full bg-gray-50 dark:bg-slate-900 border border-gray-300 dark:border-slate-600 rounded-lg p-3 text-xs font-mono dark:text-white focus:border-indigo-500 outline-none"
+                            placeholder="Collez votre config JSON ici pour surcharger la défaut"></textarea>
+                    </div>
+                </div>
+                <div x-show="fbApp && !fbUser && !viewOnly" class="space-y-4">
+
+                    <div class="flex gap-2">
+                        <input type="email" x-model="fbEmail" :placeholder="t('email')"
+                            class="w-full bg-gray-50 dark:bg-slate-900 border border-gray-300 dark:border-slate-600 rounded p-2 text-sm dark:text-white outline-none">
+                        <input type="password" x-model="fbPass" :placeholder="t('password')"
+                            class="w-full bg-gray-50 dark:bg-slate-900 border border-gray-300 dark:border-slate-600 rounded p-2 text-sm dark:text-white outline-none">
+                    </div>
+                    <div class="flex gap-4">
+                        <button @click="fbLogin()"
+                            class="flex-1 bg-green-600 hover:bg-green-500 text-white font-bold py-2 rounded-lg"
+                            x-text="t('login')"></button>
+                        <button @click="fbRegister()"
+                            class="flex-1 bg-slate-600 hover:bg-slate-500 text-white font-bold py-2 rounded-lg"
+                            x-text="t('register')"></button>
+                    </div>
+                </div>
+                <div x-show="fbUser && !viewOnly" class="space-y-6">
+                    <div
+                        class="flex justify-between items-center bg-indigo-50 dark:bg-indigo-900/20 p-3 rounded-lg border border-indigo-100 dark:border-indigo-900/50">
+                        <div class="text-sm">
+                            <span class="text-gray-500 dark:text-gray-400" x-text="t('loggedInAs')"></span>
+                            <strong class="dark:text-white ml-1" x-text="fbUser?.email"></strong>
+                        </div>
+                        <button @click="fbLogout()" class="text-xs text-red-500 hover:text-red-400 font-bold"
+                            x-text="t('logout')"></button>
+                    </div>
+
+                    <!-- Share Link -->
+                    <div class="bg-gray-100 dark:bg-slate-900 p-4 rounded-lg relative overflow-hidden group">
+                        <div class="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2">Votre lien de
+                            partage public</div>
+                        <div class="flex items-center gap-2">
+                            <input type="text" readonly
+                                :value="window.location.origin + window.location.pathname + '?user=' + (fbUser ? fbUser.uid : '')"
+                                class="w-full bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 rounded p-2 text-xs text-indigo-600 dark:text-indigo-400 font-mono outline-none">
+                            <button
+                                @click="if(fbUser) { navigator.clipboard.writeText(window.location.origin + window.location.pathname + '?user=' + fbUser.uid); showToast('Copié !', 'success'); }"
+                                class="p-2 bg-indigo-600 text-white rounded hover:bg-indigo-500"><i
+                                    class="fas fa-copy"></i></button>
+                        </div>
+                        <p class="text-[10px] text-gray-400 mt-2"><i class="fas fa-lock mr-1"></i> Accès en lecture
+                            seule uniquement.</p>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <button @click="fbSyncUp()" :disabled="fbLoading"
+                            class="p-6 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl hover:bg-blue-100 dark:hover:bg-blue-900/40 transition flex flex-col items-center gap-3 group">
+                            <div
+                                class="w-12 h-12 rounded-full bg-blue-100 dark:bg-blue-800 flex items-center justify-center text-blue-600 dark:text-blue-300 group-hover:scale-110 transition">
+                                <i class="fas fa-cloud-upload-alt text-2xl"></i>
+                            </div>
+                            <span class="font-bold text-blue-700 dark:text-blue-300" x-text="t('syncNow')"></span>
+                            <span class="text-xs text-blue-500 dark:text-blue-400">Local -> Cloud</span>
+                        </button>
+                        <button @click="fbSyncDown()" :disabled="fbLoading"
+                            class="p-6 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-xl hover:bg-orange-100 dark:hover:bg-orange-900/40 transition flex flex-col items-center gap-3 group">
+                            <div
+                                class="w-12 h-12 rounded-full bg-orange-100 dark:bg-orange-800 flex items-center justify-center text-orange-600 dark:text-orange-300 group-hover:scale-110 transition">
+                                <i class="fas fa-cloud-download-alt text-2xl"></i>
+                            </div>
+                            <span class="font-bold text-orange-700 dark:text-orange-300" x-text="t('loadCloud')"></span>
+                            <span class="text-xs text-orange-500 dark:text-orange-400">Cloud -> Local</span>
+                    </div>
+                </div>
+                <div x-show="fbLoading" class="text-center text-sm text-indigo-400 animate-pulse mt-2">Synchronisation
+                    en cours...</div>
+            </div>
+        </div>
+    </div>
+
+    </div>
+
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./service-worker.js')
+                    .then(reg => console.log('SW Registered!', reg.scope))
+                    .catch(err => console.log('SW Failed', err));
+            });
+        }
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,82 @@
+/* themes.css - Palettes de couleurs */
+
+/* 1. CONFIGURATION DE BASE (Variables par défaut - Mode Clair) */
+:root {
+    --color-bkg: #f3f4f6;       /* Gris très clair */
+    --color-surface: #ffffff;   /* Blanc */
+    --color-content: #1f2937;   /* Gris foncé */
+    --color-muted: #6b7280;     /* Gris moyen */
+    --color-border: #e5e7eb;    /* Bordure claire */
+    --color-primary: #4f46e5;   /* Indigo */
+    --color-primary-fg: #ffffff; /* Texte sur primaire */
+}
+
+/* 2. THÈME SOMBRE (Dark Mode) */
+[data-theme="dark"] {
+    --color-bkg: #0f172a;       /* Slate 900 */
+    --color-surface: #1e293b;   /* Slate 800 */
+    --color-content: #f8fafc;   /* Slate 50 */
+    --color-muted: #94a3b8;     /* Slate 400 */
+    --color-border: #334155;    /* Slate 700 */
+    --color-primary: #6366f1;   /* Indigo 500 */
+    --color-primary-fg: #ffffff;
+}
+
+/* 3. THÈME CYBERPUNK (Néon & Noir) */
+[data-theme="cyberpunk"] {
+    --color-bkg: #050505;       /* Noir profond */
+    --color-surface: #121212;   /* Gris noir */
+    --color-content: #facc15;   /* Jaune Néon */
+    --color-muted: #22d3ee;     /* Cyan Néon */
+    --color-border: #333333;    /* Gris foncé */
+    --color-primary: #db2777;   /* Rose Néon */
+    --color-primary-fg: #ffffff;
+}
+
+/* 4. THÈME OCÉAN (Bleus profonds) */
+[data-theme="ocean"] {
+    --color-bkg: #0c4a6e;       /* Bleu marine profond */
+    --color-surface: #075985;   /* Bleu pétrole */
+    --color-content: #e0f2fe;   /* Bleu glace */
+    --color-muted: #7dd3fc;     /* Bleu ciel */
+    --color-border: #0369a1;    /* Bleu moyen */
+    --color-primary: #2dd4bf;   /* Teal / Turquoise */
+    --color-primary-fg: #0f172a;
+}
+
+/* 5. THÈME FORÊT (Nature & Verts) */
+[data-theme="forest"] {
+    --color-bkg: #14532d;       /* Vert sapin */
+    --color-surface: #166534;   /* Vert feuille */
+    --color-content: #dcfce7;   /* Vert pâle */
+    --color-muted: #86efac;     /* Vert clair */
+    --color-border: #15803d;    /* Vert moyen */
+    --color-primary: #fcd34d;   /* Or */
+    --color-primary-fg: #14532d;
+}
+
+/* 6. THÈME DRACULA (Vampire) */
+[data-theme="dracula"] {
+    --color-bkg: #282a36;
+    --color-surface: #44475a;
+    --color-content: #f8f8f2;
+    --color-muted: #6272a4;
+    --color-border: #6272a4;
+    --color-primary: #bd93f9;   /* Purple */
+    --color-primary-fg: #282a36;
+}
+
+/* APPLIQUER LES VARIABLES AUX CLASSES TAILWIND */
+body { background-color: var(--color-bkg); color: var(--color-content); transition: background-color 0.5s ease, color 0.3s ease; }
+.bg-white, .dark\:bg-slate-800, .bg-gray-50, .dark\:bg-slate-900 { background-color: var(--color-surface) !important; }
+.text-gray-800, .dark\:text-gray-200, .dark\:text-white { color: var(--color-content) !important; }
+.text-gray-500, .dark\:text-slate-400 { color: var(--color-muted) !important; }
+.border-gray-200, .dark\:border-slate-700 { border-color: var(--color-border) !important; }
+.bg-indigo-600 { background-color: var(--color-primary) !important; color: var(--color-primary-fg) !important; }
+.text-indigo-600, .dark\:text-indigo-400 { color: var(--color-primary) !important; }
+
+/* Exception pour les inputs/boutons secondaires pour garder du contraste */
+input, select, textarea, .bg-gray-100, .dark\:bg-slate-700 {
+    background-color: var(--color-bkg) !important;
+    border-color: var(--color-border) !important;
+}

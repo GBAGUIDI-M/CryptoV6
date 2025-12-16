@@ -1,0 +1,33 @@
+/* --- THEMES OVERRIDES --- */
+        
+/* 1. CYBERPUNK (Néons, Noir profond) */
+html.theme-cyberpunk body { background-color: #050505; color: #e0e0e0; }
+html.theme-cyberpunk .dark\:bg-slate-800, html.theme-cyberpunk .bg-white { 
+    background-color: #0f0f13 !important; 
+    border-color: #ff00ff !important; 
+    color: #fff;
+}
+html.theme-cyberpunk .text-indigo-600, html.theme-cyberpunk .text-indigo-500 { color: #00ffff !important; text-shadow: 0 0 5px rgba(0,255,255,0.5); }
+html.theme-cyberpunk .bg-indigo-600 { background-color: #ff00ff !important; box-shadow: 0 0 10px rgba(255,0,255,0.5); color: white; }
+html.theme-cyberpunk .border-indigo-200 { border-color: #00ffff !important; }
+html.theme-cyberpunk header { border-bottom: 1px solid #00ffff !important; }
+
+/* 2. OCEAN (Bleus profonds) */
+html.theme-ocean body { background-color: #001e2b; color: #b8dbe8; }
+html.theme-ocean .dark\:bg-slate-800, html.theme-ocean .bg-white {
+    background-color: #002b3d !important;
+    border-color: #005f73 !important;
+    color: #e0f7fa;
+}
+html.theme-ocean .text-indigo-600 { color: #4db6ac !important; }
+html.theme-ocean .bg-indigo-600 { background-color: #00838f !important; }
+
+/* 3. FOREST (Verts, Or) */
+html.theme-forest body { background-color: #1a1c1a; color: #d4d4d4; }
+html.theme-forest .dark\:bg-slate-800, html.theme-forest .bg-white {
+    background-color: #242924 !important;
+    border-color: #3e4f3e !important;
+}
+html.theme-forest .text-indigo-600 { color: #98bf64 !important; }
+html.theme-forest .bg-indigo-600 { background-color: #556b2f !important; }
+html.theme-forest .text-emerald-500 { color: #98bf64 !important; }

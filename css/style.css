@@ -1,0 +1,49 @@
+[x-cloak] { display: none !important; }
+
+/* Animation d'apparition */
+.fade-in { 
+    animation: fadeIn 0.3s ease-out; 
+}
+@keyframes fadeIn { 
+    from { opacity: 0; transform: translateY(10px); } 
+    to { opacity: 1; transform: translateY(0); } 
+}
+
+/* Scrollbar Custom */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: currentColor; border-radius: 4px; opacity: 0.2; }
+
+/* Onglets Actifs */
+.tab-active { 
+    border-bottom: 2px solid; 
+    font-weight: bold; 
+    /* La couleur est gérée par les classes utilitaires text-indigo-600 etc. ou les overrides de thème */
+}
+.tab-inactive { 
+    opacity: 0.6;
+    border-bottom: 2px solid transparent; 
+}
+.tab-inactive:hover { opacity: 1; }
+
+.progress-bar { transition: width 1s ease-in-out; }
+
+/* --- SYSTÈME DE TOASTS --- */
+.toast-enter {
+    transform: translateX(100%);
+    opacity: 0;
+}
+.toast-enter-active {
+    transform: translateX(0);
+    opacity: 1;
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.toast-leave {
+    transform: translateX(0);
+    opacity: 1;
+}
+.toast-leave-active {
+    transform: translateX(100%);
+    opacity: 0;
+    transition: all 0.3s ease-in;
+}
