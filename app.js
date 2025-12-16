@@ -29,6 +29,7 @@ function cryptoApp() {
         // Firebase States
         fbConfigInput: JSON.stringify(USER_FIREBASE_CONFIG, null, 2),
         fbApp: null, fbUser: null, fbEmail: '', fbPass: '', fbLoading: false,
+        isSyncing: false, saveTimeout: null, // Auto-Sync States
 
         // Modales & Formulaires
         confirmModal: { open: false, title: '', message: '', onConfirm: () => { } },
@@ -57,9 +58,18 @@ function cryptoApp() {
             this.$watch('transactions', () => {
                 localStorage.setItem('txs', JSON.stringify(this.transactions));
                 this.updateCharts();
+                this.autoSave();
             });
-            this.$watch('settings', () => localStorage.setItem('settings', JSON.stringify(this.settings)));
+            this.$watch('settings', () => {
+                localStorage.setItem('settings', JSON.stringify(this.settings));
+                this.autoSave();
+            });
             this.$watch('prices', () => localStorage.setItem('cached_prices', JSON.stringify(this.prices)));
+            // Watch history for manual edits if any, or just consistent saving
+            this.$watch('history', () => {
+                localStorage.setItem('history', JSON.stringify(this.history));
+                this.autoSave();
+            });
 
             setTimeout(() => {
                 this.takeSnapshot();
@@ -157,9 +167,13 @@ function cryptoApp() {
                     console.log("Firebase App already initialized");
                 }
 
-                firebase.auth().onAuthStateChanged(u => {
+                firebase.auth().onAuthStateChanged(async u => {
                     this.fbUser = u;
                     console.log("Auth State Changed:", u ? "User Logged In" : "User Logged Out", u);
+                    if (u) {
+                        // Auto-load on login (silent)
+                        await this.fbSyncDown(true);
+                    }
                 });
 
                 if (!silent) alert("Firebase Initialisé avec succès !");
@@ -167,6 +181,18 @@ function cryptoApp() {
                 console.error("Firebase Init Error:", e);
                 if (!silent) alert("Erreur Init Firebase: " + e.message);
             }
+        },
+
+        autoSave() {
+            if (!this.fbUser || this.isSyncing) return;
+
+            // Debounce: Wait 2s after last change
+            if (this.saveTimeout) clearTimeout(this.saveTimeout);
+
+            this.saveTimeout = setTimeout(() => {
+                console.log("Auto-saving...");
+                this.fbSyncUp(true); // Silent save
+            }, 2000);
         },
 
         async fbLogin() {
@@ -190,39 +216,71 @@ function cryptoApp() {
             }
         },
         fbLogout() { if (this.fbApp) firebase.auth().signOut(); },
-        async fbSyncUp() {
-            if (!this.fbUser) {
-                alert("Erreur: Vous n'êtes pas connecté (fbUser est null).");
+        async fbSyncUp(silent = false) {
+            // 1. Check Offline status first
+            if (!navigator.onLine) {
+                if (!silent) alert("Erreur : Vous êtes hors ligne. Vérifiez votre connexion internet.");
                 return;
             }
-            console.log("Tentative de sauvegarde pour UID:", this.fbUser.uid);
-            this.fbLoading = true;
-            try {
-                const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("Délai d'attente dépassé (15s). Vérifiez votre connexion.")), 15000));
 
+            // 2. Vérification de la connexion Firebase
+            if (!this.fbUser) {
+                if (!silent) alert("Erreur : Vous n'êtes pas connecté. Veuillez vous reconnecter via l'onglet Cloud.");
+                return;
+            }
+
+            console.log("Début sauvegarde pour UID:", this.fbUser.uid);
+            this.fbLoading = true;
+
+            try {
+                // 3. Timeout de sécurité (15s)
+                const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("Délai d'attente dépassé (15s). Le réseau est trop lent.")), 15000));
+
+                // 4. Envoi des données avec course contre le timeout
                 await Promise.race([
                     firebase.firestore().collection('users').doc(this.fbUser.uid).set({
                         transactions: this.transactions,
-                        settings: this.settings,
                         history: this.history,
-                        date: new Date().toISOString()
+                        settings: this.settings,
+                        lastUpdated: new Date().toISOString()
                     }),
                     timeout
                 ]);
 
-                alert("Sauvegarde Cloud réussie !");
+                if (!silent) alert("✅ Sauvegarde sur le Cloud réussie !");
+                else this.showToast("Sauvegarde Auto : OK", "success");
+
             } catch (e) {
-                console.error("Sync Error:", e);
-                alert("Erreur Sauvegarde: " + e.message);
+                console.error("Erreur Upload:", e);
+                if (!silent) {
+                    if (e.code === 'permission-denied') {
+                        alert("Erreur Permission : Vérifiez les Règles dans la Console Firebase.");
+                    } else if (e.code === 'unavailable' || e.message.includes('offline')) {
+                        alert("Erreur Réseau : Le client est hors ligne.");
+                    } else {
+                        alert("Erreur Sauvegarde : " + e.message);
+                    }
+                }
             } finally {
                 this.fbLoading = false;
             }
         },
-        async fbSyncDown() {
-            if (!this.fbUser) return;
+
+        async fbSyncDown(silent = false) {
+            if (!navigator.onLine) {
+                if (!silent) alert("Erreur : Vous êtes hors ligne.");
+                return;
+            }
+            if (!this.fbUser) {
+                if (!silent) alert("Erreur : Vous n'êtes pas connecté.");
+                return;
+            }
+
             this.fbLoading = true;
+            this.isSyncing = true; // Prevent watchers from triggering autoSave during load
+
             try {
-                const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("Délai d'attente dépassé (15s). Vérifiez votre connexion.")), 15000));
+                const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("Délai d'attente dépassé (15s).")), 15000));
 
                 const doc = await Promise.race([
                     firebase.firestore().collection('users').doc(this.fbUser.uid).get(),
@@ -231,19 +289,37 @@ function cryptoApp() {
 
                 if (doc.exists) {
                     const data = doc.data();
+
+                    // Mise à jour sécurisée des données
                     this.transactions = data.transactions || [];
-                    this.settings = data.settings || this.settings;
                     this.history = data.history || [];
-                    alert("Données chargées !");
-                    this.updateCharts();
+
+                    if (data.settings) {
+                        this.settings = { ...this.settings, ...data.settings };
+                    }
+
+                    this.save(); // Sauvegarde locale
+                    this.updateCharts(); // Rafraîchir les graphiques
+
+                    if (!silent) alert("✅ Données téléchargées avec succès !");
+                    else this.showToast("Sync Cloud : Données chargées", "info");
+
                 } else {
-                    alert("Aucune sauvegarde trouvée pour cet utilisateur.");
+                    if (!silent) alert("⚠️ Aucune sauvegarde trouvée pour ce compte.");
                 }
             } catch (e) {
-                console.error("Download Error:", e);
-                alert("Erreur Téléchargement: " + e.message);
+                console.error("Erreur Download:", e);
+                if (!silent) {
+                    if (e.code === 'unavailable' || e.message.includes('offline')) {
+                        alert("Erreur Réseau : Impossible de joindre le serveur.");
+                    } else {
+                        alert("Erreur Téléchargement : " + e.message);
+                    }
+                }
             } finally {
                 this.fbLoading = false;
+                // Cooldown to avoid immediate save triggering
+                setTimeout(() => this.isSyncing = false, 500);
             }
         },
         unlockApp() {
@@ -314,7 +390,9 @@ function cryptoApp() {
                     if (data.transactions) this.transactions = data.transactions;
                     if (data.history) this.history = data.history;
                     if (data.settings) this.settings = data.settings;
-                    this.save(); location.reload();
+                    this.save();
+                    this.autoSave(); // Trigger auto-save to cloud if needed (optional here, but good for sync)
+                    location.reload();
                 } catch (e) { alert("Fichier invalide"); }
             }; reader.readAsText(file);
         },
